@@ -1,20 +1,20 @@
 #!/bin/env node
 'use strict';
 
-const config = require('./config.js');
+import config = require('./config.js');
 
-const fs = require('fs-extra');
-const path = require('path');
+import fs = require('fs-extra');
+import path = require('path');
 
-const Telegraf = require('telegraf');
-const Extra = require('telegraf/extra');
-const commandParts = require('telegraf-command-parts');
-const im = require('imagemagick');
-const JSZip = require("jszip");
-const async = require('async');
-const request = require('request');
+import { Telegraf } from 'telegraf';
+// import Extra = require('telegraf/extra');
+import commandParts = require('telegraf-command-parts');
+import im = require('imagemagick');
+import JSZip = require("jszip");
+import async = require('async');
+import request = require('request');
 
-const bot = new Telegraf(config.token, { username: config.username });
+const bot = new Telegraf(config.token);
 
 bot.use(commandParts());
 im.convert.path = config.im_convert_path;
@@ -123,11 +123,12 @@ function finishHandler(ctx, imopts) {
     let chatId = ctx.message.chat.id;
     logger(chatId, 'info', 'Starting pack task...');
     ramdb[chatId].islocked = true;
+    const packpath = config.file_storage + '/' + chatId
     let fpath = {
-        packpath: config.file_storage + '/' + chatId
+        packpath: packpath,
+        srcpath: packpath + '/src/',
+        imgpath: packpath + '/img/'
     };
-    fpath['srcpath'] = fpath.packpath + '/src/';
-    fpath['imgpath'] = fpath.packpath + '/img/';
     fs.mkdirpSync(path.resolve(fpath.packpath));
     fs.mkdirpSync(path.resolve(fpath.srcpath));
     fs.mkdirpSync(path.resolve(fpath.imgpath));
@@ -297,7 +298,7 @@ function zipHandler(ctx, callback) {
         compression: 'DEFLATE',
         type: 'nodebuffer',
         comment: 'Created by github.com/phoenixlzx/telegram-stickerimage-bot',
-        platform: process.platform
+        platform: 'DOS'
     })
         .then(function (content) {
             callback(null, content);
@@ -326,11 +327,12 @@ function directHandler(ctx) {
     let messageId = ctx.message.message_id;
     newPackHandler(ctx, function () {
         ramdb[chatId].islocked = true;
+        const packpath = config.file_storage + '/' + chatId
         let fpath = {
-            packpath: config.file_storage + '/' + chatId
+            packpath: packpath,
+            srcpath: packpath + '/src/',
+            imgpath: packpath + '/img/'
         };
-        fpath['srcpath'] = fpath.packpath + '/src/';
-        fpath['imgpath'] = fpath.packpath + '/img/';
         fs.mkdirpSync(path.resolve(fpath.packpath));
         fs.mkdirpSync(path.resolve(fpath.srcpath));
         fs.mkdirpSync(path.resolve(fpath.imgpath));
@@ -347,7 +349,7 @@ function directHandler(ctx) {
                             cleanup(chatId);
                             return ctx.reply(
                                 messages[langSession[chatId]].msg.download_error,
-                                Extra.inReplyTo(messageId)
+                                { reply_to_message_id: messageId }
                             );
                         }
                         convert(ctx, destFile, fpath, { format: 'png' }, function (err, png) {
@@ -355,13 +357,13 @@ function directHandler(ctx) {
                                 cleanup(chatId);
                                 return ctx.reply(
                                     messages[langSession[chatId]].msg.convert_error,
-                                    Extra.inReplyTo(messageId)
+                                    { reply_to_message_id: messageId }
                                 );
                             }
                             ctx.replyWithDocument({
                                 source: fs.readFileSync(png),
                                 filename: path.basename(png)
-                            }, Extra.inReplyTo(messageId))
+                            }, { reply_to_message_id: messageId })
                                 .then(function () {
                                     ctx.deleteMessage(pendingMsg.message_id);
                                     cleanup(chatId);
@@ -376,7 +378,7 @@ function directHandler(ctx) {
 function addSticker(ctx) {
     let chatId = ctx.message.chat.id;
     if (ramdb[chatId].files.indexOf(ctx.message.sticker.file_id) !== -1) {
-        return ctx.reply(messages[langSession[chatId]].msg.duplicated_sticker, Extra.inReplyTo(ctx.message.message_id));
+        return ctx.reply(messages[langSession[chatId]].msg.duplicated_sticker, { reply_to_message_id: ctx.message.message_id });
     }
     if (ramdb[chatId].files.length >= config.maximages) {
         return ctx.reply(messages[langSession[chatId]].msg.taskfull);
@@ -409,7 +411,7 @@ function resolveFile(ctx, fileId, inReplyTo, callback) {
         .catch(function (err) {
             ctx.reply(
                 messages[langSession[chatId]].msg.err_get_filelink.replace('%fileId%', fileId),
-                inReplyTo ? Extra.inReplyTo(inReplyTo) : null);
+                inReplyTo ? { reply_to_message_id: inReplyTo } : null);
             logger(chatId, 'error', 'Get File Link for ' + fileId + ': ' + err);
             callback(err, null);
         }); // no more finally(...)
@@ -460,7 +462,8 @@ function convert(ctx, src, fpath, opts, callback) {
 function cleanup(id) {
     logger(id, 'info', 'Cleaning up...');
     delete ramdb[id];
-    fs.removeSync(path.resolve(config.file_storage + '/' + id));
+    // fs.removeSync(path.resolve(config.file_storage + '/' + id));
+
 }
 
 function loadLang() {
